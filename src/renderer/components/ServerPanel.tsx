@@ -38,26 +38,41 @@ function AgentAccordion({ agent }: AgentAccordionProps) {
 
     const savedConfig = settings?.agents[agent.id];
     const hints = settings?.hints ?? [];
+    const requiresModel = agent.id === 'opencode-ollama';
 
     const [draft, setDraft] = React.useState<AgentCliConfig | null>(null);
     const [busy, setBusy] = React.useState(false);
+    const [expanded, setExpanded] = React.useState(false);
+    const [modelRequired, setModelRequired] = React.useState(false);
+    const modelInputRef = React.useRef<HTMLInputElement>(null);
 
     // 保存済み設定の変化 (保存完了・ヒント削除等) に合わせてドラフトを初期化する
     React.useEffect(() => {
         if (savedConfig) {
             setDraft({ ...savedConfig });
+            if (savedConfig.modelName) setModelRequired(false);
         }
     }, [savedConfig]);
 
     if (!savedConfig || !draft) return null;
 
     const isRunningSelf = status.running && status.agentId === agent.id;
-    const isDirty = draft.maxConcurrency !== savedConfig.maxConcurrency || draft.hintId !== savedConfig.hintId;
+    const isDirty =
+        draft.maxConcurrency !== savedConfig.maxConcurrency ||
+        draft.maxUses !== savedConfig.maxUses ||
+        draft.modelName !== savedConfig.modelName ||
+        draft.hintId !== savedConfig.hintId;
     const startDisabled = !agent.available || (status.running && !isRunningSelf) || busy;
 
     const handleStartStop = async (event: React.MouseEvent) => {
         // アコーディオンの開閉を抑止する
         event.stopPropagation();
+        if (!isRunningSelf && requiresModel && !savedConfig.modelName?.trim()) {
+            setExpanded(true);
+            setModelRequired(true);
+            setTimeout(() => modelInputRef.current?.focus(), 0);
+            return;
+        }
         setBusy(true);
         try {
             if (isRunningSelf) {
@@ -72,15 +87,18 @@ function AgentAccordion({ agent }: AgentAccordionProps) {
 
     const handleSave = async () => {
         const maxConcurrency = Math.max(1, Math.floor(draft.maxConcurrency || 1));
+        const maxUses = Math.max(1, Math.floor(draft.maxUses || 1));
+        const modelName = draft.modelName?.trim() || null;
         try {
-            await saveAgentConfig(agent.id, { ...draft, maxConcurrency });
+            await saveAgentConfig(agent.id, { ...draft, maxConcurrency, maxUses, modelName });
+            if (modelName) setModelRequired(false);
         } catch {
             // エラーはストアの lastError 経由で Snackbar に表示される
         }
     };
 
     return (
-        <Accordion disableGutters>
+        <Accordion disableGutters expanded={expanded} onChange={(_event, value) => setExpanded(value)}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Stack direction='row' spacing={2} sx={{ alignItems: 'center', flexGrow: 1, mr: 2 }}>
                     <Typography sx={{ fontWeight: 500, minWidth: 120 }}>{agent.displayName}</Typography>
@@ -108,12 +126,31 @@ function AgentAccordion({ agent }: AgentAccordionProps) {
                             type='number'
                             size='small'
                             value={draft.maxConcurrency}
-                            onChange={event =>
-                                setDraft({ ...draft, maxConcurrency: Number(event.target.value) })
-                            }
+                            onChange={event => setDraft({ ...draft, maxConcurrency: Number(event.target.value) })}
                             slotProps={{ htmlInput: { min: 1, max: 32 } }}
                             sx={{ width: 180 }}
                         />
+                        <TextField
+                            label={t('server.maxUses')}
+                            type='number'
+                            size='small'
+                            value={draft.maxUses}
+                            onChange={event => setDraft({ ...draft, maxUses: Number(event.target.value) })}
+                            slotProps={{ htmlInput: { min: 1, max: 10000 } }}
+                            sx={{ width: 180 }}
+                        />
+                        {requiresModel && (
+                            <TextField
+                                label={t('server.ollamaModel')}
+                                size='small'
+                                value={draft.modelName ?? ''}
+                                onChange={event => setDraft({ ...draft, modelName: event.target.value })}
+                                inputRef={modelInputRef}
+                                error={modelRequired}
+                                helperText={modelRequired ? t('server.ollamaModelRequired') : undefined}
+                                sx={{ minWidth: 220 }}
+                            />
+                        )}
                         <TextField
                             label={t('server.hint')}
                             select

@@ -8,7 +8,7 @@ export type CommonSettings = {
     fallbackFrom: string;
     // to パラメータ省略時のフォールバック言語コード
     fallbackTo: string;
-    // 未使用エージェントの保持期間 (秒)
+    // エージェントプロセスの最大稼働時間 (秒)
     agentRetentionSec: number;
 };
 

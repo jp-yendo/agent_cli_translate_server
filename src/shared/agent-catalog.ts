@@ -1,6 +1,6 @@
 // 対応する Agent CLI のカタログ定義 (静的メタデータ)
 
-export type AgentCliId = 'claude-code' | 'codex' | 'grok' | 'opencode';
+export type AgentCliId = 'claude-code' | 'codex' | 'grok' | 'opencode' | 'opencode-ollama';
 
 export type AgentCliDefinition = {
     id: AgentCliId;
@@ -36,6 +36,12 @@ export const AGENT_CLI_DEFINITIONS: AgentCliDefinition[] = [
         displayName: 'opencode',
         command: 'opencode',
         packageName: 'opencode-ai',
+    },
+    {
+        id: 'opencode-ollama',
+        displayName: 'OpenCode (Ollama)',
+        command: 'ollama',
+        packageName: 'Ollama + opencode',
     },
 ];
 

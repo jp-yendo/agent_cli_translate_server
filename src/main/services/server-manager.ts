@@ -70,13 +70,18 @@ async function startServerInternal(agentId: AgentCliId): Promise<ServerStatus> {
 
     const settings = loadSettings();
     const agentConfig = settings.agents[agentId];
+    if (agentId === 'opencode-ollama' && !agentConfig.modelName?.trim()) {
+        throw new Error('An Ollama model name is required for OpenCode (Ollama)');
+    }
     const hint = agentConfig.hintId ? settings.hints.find(h => h.id === agentConfig.hintId) : undefined;
 
     const pool = new AgentPool({
         agentId,
         resolvedPath: availability.resolvedPath,
         maxConcurrency: agentConfig.maxConcurrency,
-        retentionMs: settings.common.agentRetentionSec * 1000,
+        maxUses: agentConfig.maxUses,
+        modelName: agentConfig.modelName,
+        maxLifetimeMs: settings.common.agentRetentionSec * 1000,
         log: addLog,
         onStatsChanged: () => broadcastStatus(),
     });
@@ -92,6 +97,7 @@ async function startServerInternal(agentId: AgentCliId): Promise<ServerStatus> {
     });
 
     try {
+        await pool.start();
         await server.start();
     } catch (error) {
         pool.shutdown();

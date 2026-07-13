@@ -65,6 +65,10 @@ function normalizeSettings(raw: unknown): AppSettings {
                     agent.maxConcurrency,
                     settings.agents[id].maxConcurrency
                 );
+                settings.agents[id].maxUses = toPositiveInt(agent.maxUses, settings.agents[id].maxUses);
+                if (typeof agent.modelName === 'string' && agent.modelName.trim()) {
+                    settings.agents[id].modelName = agent.modelName.trim();
+                }
                 if (typeof agent.hintId === 'string' && agent.hintId) settings.agents[id].hintId = agent.hintId;
             }
         }
@@ -144,6 +148,8 @@ export function saveAgentConfig(agentId: AgentCliId, config: AgentCliConfig): Ap
     }
     const normalized: AgentCliConfig = {
         maxConcurrency: toPositiveInt(config.maxConcurrency, settings.agents[agentId].maxConcurrency),
+        maxUses: toPositiveInt(config.maxUses, settings.agents[agentId].maxUses),
+        modelName: typeof config.modelName === 'string' && config.modelName.trim() ? config.modelName.trim() : null,
         hintId: typeof config.hintId === 'string' && config.hintId ? config.hintId : null,
     };
     if (normalized.hintId && !settings.hints.some(h => h.id === normalized.hintId)) {

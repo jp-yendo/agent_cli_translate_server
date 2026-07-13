@@ -4,6 +4,10 @@ import type { AgentCliId } from '../agent-catalog';
 export type AgentCliConfig = {
     // 同時起動できるエージェント数
     maxConcurrency: number;
+    // 1プロセスを再作成するまでの最大利用回数
+    maxUses: number;
+    // Agent CLI へ明示的に渡すモデル名。不要な Agent では null
+    modelName: string | null;
     // 利用する翻訳ヒントのID (未使用時は null)
     hintId: string | null;
 };
@@ -14,11 +18,16 @@ export const DEFAULT_MAX_CONCURRENCY: Record<AgentCliId, number> = {
     codex: 5,
     grok: 5,
     opencode: 1,
+    'opencode-ollama': 1,
 };
+
+export const DEFAULT_MAX_USES = 50;
 
 export function createDefaultAgentCliConfig(id: AgentCliId): AgentCliConfig {
     return {
         maxConcurrency: DEFAULT_MAX_CONCURRENCY[id],
+        maxUses: DEFAULT_MAX_USES,
+        modelName: null,
         hintId: null,
     };
 }

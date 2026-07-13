@@ -14,7 +14,7 @@ The communication protocol follows the CustomTranslate endpoint specification of
 
 - HTTP API compliant with the CustomTranslate specification (`/translate`, `/health`)
 - Automatic detection of supported agent CLIs and server start with the selected agent (only one can listen at a time)
-- Agent pool: translates in parallel up to the configured concurrency; excess requests wait in a queue. Idle agents are reused, and agents unused beyond the retention period are terminated automatically
+- Agent pool: starts and verifies at least one reusable agent process before listening, translates in parallel up to the configured concurrency, and queues excess requests. Processes are replaced after the configured lifetime or usage limit
 - Translation hint management: register a summary of the target app to get translations that fit the content
 - Activity log view (latest 200 entries with auto-scroll)
 - Preserves line breaks, whitespace and markup; filters dynamic values (e.g. FPS counters) and texts that need no translation
@@ -27,8 +27,10 @@ The communication protocol follows the CustomTranslate endpoint specification of
 | Codex CLI | `codex` | `@openai/codex` | 5 |
 | Grok CLI | `grok` | `@xai-official/grok` | 5 |
 | opencode | `opencode` | `opencode-ai` | 1 |
+| OpenCode (Ollama) | `ollama launch opencode --model <model>` | Ollama + opencode | 1 |
 
 Install each agent CLI beforehand and complete its login (authentication) procedure.
+OpenCode (Ollama) requires both Ollama and OpenCode. Set the Ollama model name in its agent settings before starting it.
 
 ### XUnity.AutoTranslator configuration
 
@@ -78,9 +80,9 @@ curl "http://127.0.0.1:4660/translate?from=en&to=ja&text=Hello"
 
 ### Usage
 
-1. Start the app and review/save the settings in the "Common Settings" tab: listen address (default 127.0.0.1), port (default 4660), fallback languages, and agent retention period (default 300 seconds).
+1. Start the app and review/save the settings in the "Common Settings" tab: listen address (default 127.0.0.1), port (default 4660), fallback languages, and agent process lifetime (default 300 seconds).
 2. Optionally register a summary of the target app in the "Translation Hints" tab.
-3. In the "Server" tab, expand the accordion of the agent CLI you want to use, configure the concurrency and translation hint, and save.
+3. In the "Server" tab, expand the accordion of the agent CLI you want to use, configure the concurrency, maximum process uses, and translation hint, and save.
 4. Press the "Start" button on the agent's header row to start the translation server (other agents cannot be started while one is running).
 5. Check translation requests/results in the "Logs" tab.
 

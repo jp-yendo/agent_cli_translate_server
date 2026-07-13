@@ -19,6 +19,9 @@ export default {
         noAgents:
             '利用可能な Agent CLI が見つかりません。対応する Agent CLI をインストールして「再検出」を押してください。',
         maxConcurrency: '同時起動数',
+        maxUses: 'プロセス最大利用回数',
+        ollamaModel: 'Ollama モデル名',
+        ollamaModelRequired: 'モデル名を入力して保存してください。',
         hint: '翻訳ヒント',
         hintNone: '（未使用）',
         save: '保存',
@@ -40,7 +43,7 @@ export default {
         queueWaiting: 'エージェントが空くのを待っています (待ち: {{count}}件)',
         workerSpawned: 'エージェント #{{index}} を起動しました',
         workerDisposed: 'エージェント #{{index}} を終了しました',
-        workerExpired: '保持期間を超えたためエージェント #{{index}} を終了しました',
+        workerExpired: '最大稼働時間を超えたためエージェント #{{index}} を終了しました',
     },
     common: {
         sectionDisplay: '表示設定',
@@ -53,7 +56,7 @@ export default {
         port: 'ポート',
         fallbackFrom: 'フォールバック翻訳元言語',
         fallbackTo: 'フォールバック翻訳先言語',
-        agentRetentionSec: 'エージェントの保持期間 (秒)',
+        agentRetentionSec: 'エージェントプロセスの最大稼働時間 (秒)',
         save: '保存',
         note: '変更は次回のサーバー開始時に反映されます。',
     },

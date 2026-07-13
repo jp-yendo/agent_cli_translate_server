@@ -6,9 +6,9 @@ import { createTranslationWorker, type TranslationWorker } from './agent-worker'
 //
 // - 設定された同時起動数までワーカーを起動し、翻訳依頼を割り振る
 // - 同時起動数を超えた依頼は待ち状態にする (タイムアウトなし、待ち数の制限なし)
-// - 空いたワーカーは再利用し、保持期間を超えて未使用のワーカーは終了させる
-// - 初回応答速度を維持するため、プール生成時に1体を事前起動し、
-//   保持期間の経過でワーカーが0体になった場合も1体を起動し直して待機させる
+// - 空いたワーカーは再利用し、設定された稼働時間を超えたワーカーは終了させる
+// - 初回応答速度を維持するため、Listen 前に1体の起動完了を待ち、
+//   最大稼働時間の経過でワーカーが0体になった場合も1体を起動し直して待機させる
 
 export type PoolStats = {
     activeWorkers: number;
@@ -20,7 +20,9 @@ export type PoolOptions = {
     agentId: AgentCliId;
     resolvedPath: string;
     maxConcurrency: number;
-    retentionMs: number;
+    maxUses: number;
+    modelName: string | null;
+    maxLifetimeMs: number;
     log: (level: LogLevel, key: string, params?: Record<string, string | number>) => void;
     onStatsChanged: (stats: PoolStats) => void;
 };
@@ -38,18 +40,39 @@ export class AgentPool {
     private readonly queue: Waiter[] = [];
     private nextIndex = 1;
     private shuttingDown = false;
+    private started = false;
     private readonly sweepTimer: NodeJS.Timeout;
 
     constructor(private readonly opts: PoolOptions) {
-        this.sweepTimer = setInterval(() => this.sweepIdleWorkers(), SWEEP_INTERVAL_MS);
-        this.ensureMinimumWorker();
+        this.sweepTimer = setInterval(() => this.sweepExpiredWorkers(), SWEEP_INTERVAL_MS);
     }
 
-    // ワーカーが1体もいない場合に1体を起動して待機させる
-    private ensureMinimumWorker(): void {
-        if (this.shuttingDown || this.workers.size > 0) return;
-        this.idle.push(this.spawnWorker());
+    async start(): Promise<void> {
+        if (this.started) return;
+        const worker = await this.spawnReadyWorker();
+        if (this.shuttingDown) {
+            this.destroyWorker(worker, 'workerDisposed');
+            throw new Error('Pool is shutting down');
+        }
+        this.idle.push(worker);
+        this.started = true;
         this.emitStats();
+    }
+
+    // ワーカーが1体もいない場合に、起動完了した1体を待機させる
+    private async ensureMinimumWorker(): Promise<void> {
+        if (this.shuttingDown || this.workers.size > 0) return;
+        try {
+            const worker = await this.spawnReadyWorker();
+            if (this.shuttingDown) {
+                this.destroyWorker(worker, 'workerDisposed');
+                return;
+            }
+            this.idle.push(worker);
+            this.emitStats();
+        } catch {
+            // 次の依頼または監視周期で再試行する
+        }
     }
 
     getStats(): PoolStats {
@@ -74,44 +97,69 @@ export class AgentPool {
         }
     }
 
-    private acquire(): Promise<TranslationWorker> {
+    private async acquire(): Promise<TranslationWorker> {
         if (this.shuttingDown) {
-            return Promise.reject(new Error('Pool is shutting down'));
+            throw new Error('Pool is shutting down');
         }
         // 待機中に死んだワーカー (常駐プロセスの異常終了等) は破棄して次を探す
         let idleWorker = this.idle.pop();
-        while (idleWorker && (!idleWorker.alive || !idleWorker.isReusable())) {
-            this.destroyWorker(idleWorker, 'workerDisposed');
+        while (
+            idleWorker &&
+            (!idleWorker.alive ||
+                !idleWorker.isReusable() ||
+                Date.now() - idleWorker.processStartedAt >= this.opts.maxLifetimeMs)
+        ) {
+            this.destroyWorker(
+                idleWorker,
+                Date.now() - idleWorker.processStartedAt >= this.opts.maxLifetimeMs ? 'workerExpired' : 'workerDisposed'
+            );
             idleWorker = this.idle.pop();
         }
         if (idleWorker) {
             this.emitStats();
-            return Promise.resolve(idleWorker);
+            return idleWorker;
         }
         if (this.workers.size < this.opts.maxConcurrency) {
-            const worker = this.spawnWorker();
-            this.emitStats();
-            return Promise.resolve(worker);
+            try {
+                const worker = await this.spawnReadyWorker();
+                this.emitStats();
+                return worker;
+            } catch (error) {
+                void this.ensureMinimumWorker();
+                throw error;
+            }
         }
         // 全ワーカーが処理中のため待ち状態にする
-        return new Promise<TranslationWorker>((resolve, reject) => {
+        return await new Promise<TranslationWorker>((resolve, reject) => {
             this.queue.push({ resolve, reject });
             this.opts.log('info', 'queueWaiting', { count: this.queue.length });
             this.emitStats();
         });
     }
 
-    private spawnWorker(): TranslationWorker {
-        const worker = createTranslationWorker(this.opts.agentId, this.opts.resolvedPath, this.nextIndex);
+    private createWorker(): TranslationWorker {
+        const worker = createTranslationWorker(
+            this.opts.agentId,
+            this.opts.resolvedPath,
+            this.nextIndex,
+            this.opts.maxUses,
+            this.opts.modelName
+        );
         this.nextIndex += 1;
         this.workers.add(worker);
         this.opts.log('info', 'workerSpawned', { index: worker.index });
-        try {
-            worker.warmUp();
-        } catch {
-            // 事前起動の失敗は依頼実行時に改めて報告される
-        }
         return worker;
+    }
+
+    private async spawnReadyWorker(): Promise<TranslationWorker> {
+        const worker = this.createWorker();
+        try {
+            await worker.warmUp();
+            return worker;
+        } catch (error) {
+            this.destroyWorker(worker, 'workerDisposed');
+            throw error;
+        }
     }
 
     private destroyWorker(worker: TranslationWorker, reasonKey: 'workerDisposed' | 'workerExpired'): void {
@@ -128,21 +176,23 @@ export class AgentPool {
         if (this.shuttingDown) {
             return;
         }
-        worker.lastUsedAt = Date.now();
-
-        if (!worker.alive || !worker.isReusable()) {
-            this.destroyWorker(worker, 'workerDisposed');
+        const expired = Date.now() - worker.processStartedAt >= this.opts.maxLifetimeMs;
+        if (!worker.alive || !worker.isReusable() || expired) {
+            this.destroyWorker(worker, expired ? 'workerExpired' : 'workerDisposed');
             // 待ちがある場合は代わりのワーカーを起動して割り当てる
             const waiter = this.queue.shift();
             if (waiter) {
                 if (this.workers.size < this.opts.maxConcurrency) {
-                    waiter.resolve(this.spawnWorker());
+                    void this.spawnReadyWorker().then(waiter.resolve, error => {
+                        waiter.reject(error instanceof Error ? error : new Error(String(error)));
+                        void this.ensureMinimumWorker();
+                    });
                 } else {
                     // 他のワーカーの解放を待つため待ち行列へ戻す
                     this.queue.unshift(waiter);
                 }
             }
-            this.ensureMinimumWorker();
+            void this.ensureMinimumWorker();
             this.emitStats();
             return;
         }
@@ -154,19 +204,19 @@ export class AgentPool {
         } else {
             this.idle.push(worker);
         }
-        this.ensureMinimumWorker();
+        void this.ensureMinimumWorker();
         this.emitStats();
     }
 
-    private sweepIdleWorkers(): void {
+    private sweepExpiredWorkers(): void {
         if (this.shuttingDown) return;
         const now = Date.now();
-        const expired = this.idle.filter(worker => now - worker.lastUsedAt >= this.opts.retentionMs);
+        const expired = this.idle.filter(worker => now - worker.processStartedAt >= this.opts.maxLifetimeMs);
         for (const worker of expired) {
             this.destroyWorker(worker, 'workerExpired');
         }
-        if (expired.length > 0) {
-            this.ensureMinimumWorker();
+        if (expired.length > 0 || this.workers.size === 0) {
+            void this.ensureMinimumWorker();
             this.emitStats();
         }
     }
