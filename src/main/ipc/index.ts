@@ -1,5 +1,5 @@
-// import { ipcMain } from 'electron';
 import { registerUpdaterIpcHandlers } from './updater';
+import { registerTranslateServerIpcHandlers } from './translate-server';
 
 /**
  * IPCハンドラを登録
@@ -9,8 +9,6 @@ export function registerIpcHandlers() {
     // 自動アップデート関連の IPC ハンドラ
     registerUpdaterIpcHandlers();
 
-    // 例: カスタムIPCハンドラ
-    // ipcMain.handle('custom:action', async (_e, arg) => {
-    //     return someService.doSomething(arg);
-    // });
+    // 翻訳サーバー関連の IPC ハンドラ
+    registerTranslateServerIpcHandlers();
 }

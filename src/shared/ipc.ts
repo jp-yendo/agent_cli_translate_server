@@ -1,4 +1,17 @@
-import type { AppInfo, AppLanguage, AppTheme, UpdateState } from './types';
+import type {
+    AgentCliAvailability,
+    AppInfo,
+    AppLanguage,
+    AppSettings,
+    AppTheme,
+    LogEntry,
+    ServerStatus,
+    UpdateState,
+} from './types';
+import type { AgentCliId } from './agent-catalog';
+import type { AgentCliConfig } from './models/agent-cli-config';
+import type { CommonSettings } from './models/common-settings';
+import type { TranslationHint } from './models/translation-hint';
 
 // IPC APIの型定義
 export type IpcApi = {
@@ -6,6 +19,32 @@ export type IpcApi = {
     getAppInfo(): Promise<AppInfo>;
     setTheme(theme: AppTheme): Promise<{ theme: AppTheme }>;
     setLanguage(language: AppLanguage): Promise<{ language: AppLanguage }>;
+    // 設定
+    settings: {
+        getAll(): Promise<AppSettings>;
+        saveCommon(common: CommonSettings): Promise<AppSettings>;
+        saveAgent(agentId: AgentCliId, config: AgentCliConfig): Promise<AppSettings>;
+    };
+    // 翻訳ヒント管理
+    hints: {
+        create(input: { name: string; summary: string }): Promise<AppSettings>;
+        update(hint: TranslationHint): Promise<AppSettings>;
+        remove(hintId: string): Promise<AppSettings>;
+    };
+    // Agent CLI 検出
+    detectAgents(): Promise<AgentCliAvailability[]>;
+    // 翻訳サーバー制御
+    server: {
+        start(agentId: AgentCliId): Promise<ServerStatus>;
+        stop(): Promise<ServerStatus>;
+        getStatus(): Promise<ServerStatus>;
+        onStatusChanged(listener: (status: ServerStatus) => void): () => void;
+    };
+    // 動作状況ログ
+    log: {
+        getRecent(): Promise<LogEntry[]>;
+        onAdded(listener: (entry: LogEntry) => void): () => void;
+    };
     // ウィンドウ制御
     minimize(): Promise<void>;
     maximizeOrRestore(): Promise<boolean>;
@@ -28,6 +67,6 @@ export type IpcApi = {
 
 declare global {
     interface Window {
-        dfapp: IpcApi;
+        agentCliTranslateServer: IpcApi;
     }
 }

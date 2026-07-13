@@ -21,11 +21,11 @@ export default function UpdateNotifier() {
         let cancelled = false;
 
         // 取りこぼしを防ぐため購読を先に登録
-        const unsubscribe = window.dfapp.updater.onStateChanged(next => {
+        const unsubscribe = window.agentCliTranslateServer.updater.onStateChanged(next => {
             setState(next);
         });
 
-        window.dfapp.updater.getState().then(initial => {
+        window.agentCliTranslateServer.updater.getState().then(initial => {
             if (cancelled) return;
             setState(initial);
         });
@@ -60,7 +60,7 @@ export default function UpdateNotifier() {
                                     size='small'
                                     variant='outlined'
                                     onClick={() => {
-                                        void window.dfapp.updater.download();
+                                        void window.agentCliTranslateServer.updater.download();
                                     }}
                                 >
                                     {t('updater.update')}
@@ -105,7 +105,7 @@ export default function UpdateNotifier() {
                                     size='small'
                                     variant='outlined'
                                     onClick={() => {
-                                        void window.dfapp.updater.download();
+                                        void window.agentCliTranslateServer.updater.download();
                                     }}
                                 >
                                     {t('updater.retry')}

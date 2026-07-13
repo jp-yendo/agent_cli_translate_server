@@ -3,6 +3,8 @@ import { app, BrowserWindow, nativeTheme, ipcMain } from 'electron';
 import { setupConsoleBridge, setMainWindow } from './utils/console-bridge';
 import { registerIpcHandlers } from './ipc/index';
 import { initializeUpdater, scheduleStartupCheck, isInstallingUpdate } from './services/updater';
+import { emergencyShutdownSync, isServerRunning, shutdownOnAppQuit } from './services/server-manager';
+import { loadSettings, saveUiSettings } from './services/settings-store';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -68,14 +70,35 @@ app.whenReady().then(async () => {
     // アプリケーション固有のIPCハンドラを登録
     registerIpcHandlers();
 
+    // 初回起動時は OS の設定からテーマと言語を判定し、設定ファイルへ確定保存する
+    {
+        const ui = { ...loadSettings().ui };
+        let changed = false;
+        if (ui.theme === 'system') {
+            ui.theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+            changed = true;
+        }
+        if (ui.language === null) {
+            ui.language = app.getLocale().startsWith('ja') ? 'ja' : 'en';
+            changed = true;
+        }
+        if (changed) {
+            saveUiSettings(ui);
+        }
+        // 保存済みのテーマ設定を適用する
+        nativeTheme.themeSource = ui.theme;
+    }
+
     // アプリ情報取得とウィンドウ制御のIPC
     ipcMain.handle('app:getInfo', async () => {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- ビルド成果物の相対位置からpackage.jsonを実行時に読み込むため
         const pkg = require('../../package.json');
+        const ui = loadSettings().ui;
         return {
-            name: app.getName() || pkg.name || 'Default App',
+            name: app.getName() || pkg.name || 'Agent CLI Translate Server',
             version: pkg.version || app.getVersion(),
-            language: (app.getLocale().startsWith('ja') ? 'ja' : 'en') as 'ja' | 'en',
+            // 言語設定が保存されていなければ OS のロケールに従う
+            language: ui.language ?? ((app.getLocale().startsWith('ja') ? 'ja' : 'en') as 'ja' | 'en'),
             theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
             os: process.platform as 'win32' | 'darwin' | 'linux',
         };
@@ -83,11 +106,12 @@ app.whenReady().then(async () => {
 
     ipcMain.handle('app:setTheme', (_e, theme: 'light' | 'dark' | 'system') => {
         nativeTheme.themeSource = theme;
+        saveUiSettings({ theme });
         return { theme };
     });
 
     ipcMain.handle('app:setLanguage', (_e, lang: 'ja' | 'en') => {
-        // 必要に応じて設定に保存
+        saveUiSettings({ language: lang });
         return { language: lang };
     });
 
@@ -108,6 +132,29 @@ app.whenReady().then(async () => {
         mainWindow?.close();
     });
     createWindow();
+});
+
+// 翻訳サーバー・エージェントの停止が完了してからアプリを終了する
+let quitCleanupDone = false;
+app.on('before-quit', event => {
+    if (quitCleanupDone) return;
+    quitCleanupDone = true;
+    if (!isServerRunning()) return;
+    if (isInstallingUpdate()) {
+        // アップデート適用時の quitAndInstall による終了は妨げてはならないため、
+        // 終了は保留せずエージェントプロセスのみ同期で即時終了する
+        emergencyShutdownSync();
+        return;
+    }
+    // 一旦終了を保留し、サーバーと全エージェントの停止完了後に改めて終了する
+    event.preventDefault();
+    void shutdownOnAppQuit()
+        .catch(error => {
+            console.error('Failed to shut down translation server on quit:', error);
+        })
+        .finally(() => {
+            app.quit();
+        });
 });
 
 app.on('window-all-closed', () => {

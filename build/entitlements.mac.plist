@@ -34,7 +34,7 @@
 
     <!-- Allow reading from user home directory and Library folders -->
     <!-- Required for accessing:
-         - ~/.dfapp (app config)
+         - ~/.agent_cli_translate_server (app config)
     -->
     <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
     <array>

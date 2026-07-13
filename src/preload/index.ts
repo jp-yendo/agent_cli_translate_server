@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcApi } from '../shared/ipc';
-import type { UpdateState } from '../shared/types';
+import type { LogEntry, ServerStatus, UpdateState } from '../shared/types';
+import type { AgentCliId } from '../shared/agent-catalog';
+import type { AgentCliConfig } from '../shared/models/agent-cli-config';
+import type { CommonSettings } from '../shared/models/common-settings';
+import type { TranslationHint } from '../shared/models/translation-hint';
 
 // IPCチャンネル定義（ランタイムでsharedからインポートを避けるためローカルコピー）
 const IPC_CHANNELS = {
@@ -17,6 +21,19 @@ const IPC_CHANNELS = {
     UPDATER_QUIT_AND_INSTALL: 'updater:quitAndInstall',
     UPDATER_GET_STATE: 'updater:getState',
     UPDATER_STATE_CHANGED: 'updater:stateChanged',
+    SETTINGS_GET_ALL: 'settings:getAll',
+    SETTINGS_SAVE_COMMON: 'settings:saveCommon',
+    SETTINGS_SAVE_AGENT: 'settings:saveAgent',
+    HINTS_CREATE: 'hints:create',
+    HINTS_UPDATE: 'hints:update',
+    HINTS_DELETE: 'hints:delete',
+    AGENTS_DETECT: 'agents:detect',
+    SERVER_START: 'server:start',
+    SERVER_STOP: 'server:stop',
+    SERVER_GET_STATUS: 'server:getStatus',
+    SERVER_STATUS_CHANGED: 'server:statusChanged',
+    LOG_GET_RECENT: 'log:getRecent',
+    LOG_ADDED: 'log:added',
 } as const;
 
 const api: IpcApi = {
@@ -41,6 +58,61 @@ const api: IpcApi = {
     async close() {
         return ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE);
     },
+    settings: {
+        async getAll() {
+            return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_ALL);
+        },
+        async saveCommon(common: CommonSettings) {
+            return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_COMMON, common);
+        },
+        async saveAgent(agentId: AgentCliId, config: AgentCliConfig) {
+            return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_AGENT, agentId, config);
+        },
+    },
+    hints: {
+        async create(input: { name: string; summary: string }) {
+            return ipcRenderer.invoke(IPC_CHANNELS.HINTS_CREATE, input);
+        },
+        async update(hint: TranslationHint) {
+            return ipcRenderer.invoke(IPC_CHANNELS.HINTS_UPDATE, hint);
+        },
+        async remove(hintId: string) {
+            return ipcRenderer.invoke(IPC_CHANNELS.HINTS_DELETE, hintId);
+        },
+    },
+    async detectAgents() {
+        return ipcRenderer.invoke(IPC_CHANNELS.AGENTS_DETECT);
+    },
+    server: {
+        async start(agentId: AgentCliId) {
+            return ipcRenderer.invoke(IPC_CHANNELS.SERVER_START, agentId);
+        },
+        async stop() {
+            return ipcRenderer.invoke(IPC_CHANNELS.SERVER_STOP);
+        },
+        async getStatus() {
+            return ipcRenderer.invoke(IPC_CHANNELS.SERVER_GET_STATUS);
+        },
+        onStatusChanged(listener: (status: ServerStatus) => void) {
+            const handler = (_event: Electron.IpcRendererEvent, status: ServerStatus) => listener(status);
+            ipcRenderer.on(IPC_CHANNELS.SERVER_STATUS_CHANGED, handler);
+            return () => {
+                ipcRenderer.removeListener(IPC_CHANNELS.SERVER_STATUS_CHANGED, handler);
+            };
+        },
+    },
+    log: {
+        async getRecent() {
+            return ipcRenderer.invoke(IPC_CHANNELS.LOG_GET_RECENT);
+        },
+        onAdded(listener: (entry: LogEntry) => void) {
+            const handler = (_event: Electron.IpcRendererEvent, entry: LogEntry) => listener(entry);
+            ipcRenderer.on(IPC_CHANNELS.LOG_ADDED, handler);
+            return () => {
+                ipcRenderer.removeListener(IPC_CHANNELS.LOG_ADDED, handler);
+            };
+        },
+    },
     updater: {
         async getState() {
             return ipcRenderer.invoke(IPC_CHANNELS.UPDATER_GET_STATE);
@@ -64,7 +136,7 @@ const api: IpcApi = {
     },
 };
 
-contextBridge.exposeInMainWorld('dfapp', api);
+contextBridge.exposeInMainWorld('agentCliTranslateServer', api);
 
 // メインプロセスのコンソールメッセージを受信してDevToolsに転送
 ipcRenderer.on(

@@ -1,17 +1,17 @@
-appId: com.developapp.app
-productName: Develop App
+appId: com.agentclitranslateserver.app
+productName: Agent CLI Translate Server
 directories:
   output: release
   buildResources: build
-artifactName: "developapp-${version}-${os}-${arch}.${ext}"
+artifactName: "agent-cli-translate-server-${version}-${os}-${arch}.${ext}"
 afterAllArtifactBuild: scripts/zip-portable.js
 portable:
-  artifactName: "developapp-${version}-${os}-${arch}-portable.${ext}"
+  artifactName: "agent-cli-translate-server-${version}-${os}-${arch}-portable.${ext}"
   buildUniversalInstaller: false
 publish:
   provider: github
   owner: kakehashi-inc
-  repo: develop_app
+  repo: agent_cli_translate_server
   releaseType: draft
 releaseInfo:
   releaseName: "v${version}"
@@ -37,7 +37,7 @@ files:
 
 win:
   icon: public/icon.ico
-  executableName: developapp
+  executableName: agent_cli_translate_server
   target:
     - target: nsis
       arch:
@@ -49,7 +49,7 @@ win:
         - arm64
 
 nsis:
-  shortcutName: Develop App
+  shortcutName: Agent CLI Translate Server
   buildUniversalInstaller: false
   oneClick: false
   perMachine: false
@@ -94,6 +94,6 @@ linux:
         - arm64
   desktop:
     entry:
-      Name: Develop App
-      Comment: "Develop App."
+      Name: Agent CLI Translate Server
+      Comment: "AI translation server for XUnity.AutoTranslator CustomTranslate."
       Categories: Development;

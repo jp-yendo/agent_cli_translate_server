@@ -1,44 +1,92 @@
-# システム名をここに記載
+# Agent CLI Translate Server
 
-## 0. 開発開始時のプロンプト例
-
-```text
-～～　開発するアプリなどの指示内容　～～
-
-これら作業に入る前に、まずこのテンプレートプロジェクト内のREADME-ja.mdのシステム概要セクションを参照し、その中の指示にあるファイル名、ファイル内容など置き換えるものを先に置き換えてから作業を開始してください。
-全作業完了時にはこのシステム概要セクションを一式置き換えしてください。
-
-プロジェクト名： ～
-設定ファイルディレクトリ： ~/.devapp～
-実行ファイル： dev_app
-配布ファイル名： devapp-～
-名前パターン：
-- Dev App
-- dev_app
-- dev-app
-
-全ての対応が完了したらREADME-ja.mdの内容を元に、英語でREADME.mdを作成してください。
-```
+[English README is here](README.md)
 
 ## 1. システム概要
 
-システムの概略をここに記載してください。
+Agent CLI Translate Server は、[XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator) の CustomTranslate 用 AI 翻訳サーバーの GUI アプリケーションです。
 
-事前の変更点は以下のキーワードでファイル名、またはファイル内容を検索しアプリ名に置き換えてください。
+各 AI プロバイダーの API キーを直接利用するのではなく、ローカルにインストール済みの Agent CLI (コーディングエージェントの CLI) をプロセスとして起動して翻訳を行います。すでに Agent CLI へログインしていれば、追加の API キー設定なしで利用できます。
 
-ファイル名キーワード:
+通信の仕様は XUnity.AutoTranslator の CustomTranslate エンドポイント仕様 (`GET /translate?from=...&to=...&text=...` に対しプレーンテキストで翻訳結果を返す) に合わせており、XUnity.AutoTranslator の CustomTranslate としてそのまま利用できます。
 
-- develop_app
-- develop-app
+### 主な機能
 
-ファイル内容検索キーワード:
+- CustomTranslate 仕様に準拠した HTTP API (`/translate`, `/health`)
+- 対応 Agent CLI の自動検出と、選択したエージェントでの翻訳サーバー起動 (同時に起動できるのは1つ)
+- エージェントプール: 設定した同時起動数まで並列翻訳し、超過分は待ち行列で処理。空いたエージェントは再利用し、保持期間を超えた未使用エージェントは自動終了
+- 翻訳ヒント管理: 翻訳対象アプリの概要 (サマリ) を登録し、内容に合った翻訳を実現
+- 動作状況ログ (直近200件、自動スクロール対応)
+- 改行・空白・タグを保持した翻訳、動的な値 (FPS 表示等) や翻訳不要テキストのフィルタリング
 
-- develop_app
-- develop-app
-- develop app
-- developapp
-- dfapp
-- システム名をここに記載
+### 対応 Agent CLI
+
+| Agent CLI | コマンド | 提供元パッケージ | 同時起動数デフォルト |
+| --- | --- | --- | --- |
+| Claude Code | `claude` | `@anthropic-ai/claude-code` | 5 |
+| Codex CLI | `codex` | `@openai/codex` | 5 |
+| Grok CLI | `grok` | `@xai-official/grok` | 5 |
+| opencode | `opencode` | `opencode-ai` | 1 |
+
+各 Agent CLI は事前にインストールし、それぞれの手順でログイン (認証) を済ませておいてください。
+
+### XUnity.AutoTranslator での設定
+
+`AutoTranslatorConfig.ini` に以下を設定します:
+
+```ini
+[Service]
+Endpoint=CustomTranslate
+
+[Custom]
+Url=http://127.0.0.1:4660/translate
+```
+
+待ち受けアドレス・ポートを変更した場合は `Url` を合わせて変更してください。
+
+### API サンプル
+
+翻訳リクエスト (CustomTranslate 仕様):
+
+```http
+GET http://127.0.0.1:4660/translate?from=ja&to=en&text=こんにちは
+```
+
+レスポンス (200, text/plain):
+
+```text
+Hello
+```
+
+ヘルスチェック:
+
+```http
+GET http://127.0.0.1:4660/health
+```
+
+レスポンス (200, text/plain):
+
+```text
+ok
+```
+
+curl での動作確認例:
+
+```bash
+curl "http://127.0.0.1:4660/translate?from=en&to=ja&text=Hello"
+```
+
+### 使い方
+
+1. アプリを起動し、「共通設定」タブで待ち受けアドレス (デフォルト 127.0.0.1)・ポート (デフォルト 4660)・フォールバック言語・エージェント保持期間 (デフォルト 300秒) を確認・保存します。
+2. 必要に応じて「翻訳ヒント」タブで翻訳対象アプリの概要を登録します。
+3. 「サーバー」タブで利用する Agent CLI のアコーディオンを開き、同時起動数と翻訳ヒントを設定して保存します。
+4. エージェント名の行にある「開始」ボタンで翻訳サーバーを起動します (起動中は他のエージェントは開始できません)。
+5. 「ログ」タブで翻訳依頼・翻訳結果などの動作状況を確認できます。
+
+### 設定ファイル
+
+設定は `~/.agent_cli_translate_server/settings.json` に保存されます。
 
 ## 2. 対応OS
 
@@ -124,18 +172,20 @@ src/
 ├── main/                  # Electron メイン: IPC/各種マネージャ
 │   ├── index.ts           # 起動・ウィンドウ生成・サービス初期化
 │   ├── ipc/               # IPCハンドラ
-│   ├── services/          # 各種サービス
+│   ├── services/          # 翻訳サーバー・エージェントプール等の各種サービス
 │   └── utils/             # 各種ユーティリティ
 ├── preload/               # renderer へ安全にAPIをブリッジ
 ├── renderer/              # React + MUI UI
-├── shared/                # 型定義・定数(Default設定/保存パス)
+├── shared/                # 型定義・定数(Default設定/保存パス)・データモデル
 └── public/                # アイコン等
 ```
+
+詳細は [Documents/システム仕様.md](Documents/システム仕様.md) と [Documents/テーブル定義.md](Documents/テーブル定義.md) を参照してください。
 
 ### 使用技術
 
 - **Electron**
-- **React (MUI v7)**
+- **React (MUI v9)**
 - **TypeScript**
 - **Zustand**
 - **i18next**
@@ -146,3 +196,7 @@ src/
 ```exec
 magick public/icon.png -define icon:auto-resize=256,128,96,64,48,32,24,16 public/icon.ico
 ```
+
+## ライセンス
+
+MIT License

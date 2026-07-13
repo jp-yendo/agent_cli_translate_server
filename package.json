@@ -1,7 +1,7 @@
 {
-  "name": "develop-app",
+  "name": "agent-cli-translate_server",
   "version": "0.1.0",
-  "description": "develop app",
+  "description": "AI translation server for XUnity.AutoTranslator CustomTranslate powered by agent CLIs",
   "main": "dist/main/index.js",
   "engines": {
     "node": ">=22.0.0",
@@ -28,7 +28,9 @@
     "clean": "rimraf dist release node_modules/.cache"
   },
   "keywords": [
-    "develop-app"
+    "agent-cli-translate_server",
+    "xunity-autotranslator",
+    "translation"
   ],
   "author": "",
   "license": "MIT",
