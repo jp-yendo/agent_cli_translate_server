@@ -1,34 +1,25 @@
 import { getLanguageName } from '../../shared/languages';
+import {
+    cleanChatResponse,
+    type ChatMessages,
+    type TranslationAttempt,
+    type TranslationRequest,
+} from './prompt-profiles/base';
+import { modelPromptProfiles } from './prompt-profiles';
 
 // AI 翻訳用のプロンプト構築・応答解析
 //
 // プロンプト生成 (buildTranslationAttempts) と結果解析 (各試行の validate) は
 // 全経路 (Agent CLI / API) で共通。経路ごとに異なるのは「プロンプトをどう送って
 // 応答を得るか」(dispatch) のみで、runTranslationAttempts がその差を吸収する。
+//
+// 既定 (一般モデル) の対応は本ファイルが持つ。既定から外れるモデル固有の対応は
+// prompt-profiles/ ディレクトリにプロファイルとして 1 ファイルずつ置き、
+// prompt-profiles/index.ts のレジストリ (modelPromptProfiles) へ登録する。
 
-// 1 件の翻訳依頼 (プロンプトの組み立て方は経路・モデルごとに異なるため素の情報を渡す)
-export interface TranslationRequest {
-    text: string;
-    srcLang: string;
-    dstLang: string;
-    appSummary?: string;
-}
-
-// チャット形式のメッセージ (system / user のロール分離)
-// system/user を持たない Agent CLI では flattenChatMessages で 1 本に結合する
-export type ChatMessages = { system?: string; user: string };
-
-// 1 回の翻訳試行 (プロンプトと、その応答を訳文へ整形・検証する関数の組)
-// 複数の試行を先頭から順に試し、最初に妥当な出力を採用する
-export type TranslationAttempt = {
-    messages: ChatMessages;
-    validate: (raw: string) => { ok: boolean; text: string };
-};
-
-// Hy-MT2 (Tencent Hunyuan の翻訳特化モデル) 判定
-export function isHyMt2Model(model: string): boolean {
-    return model.toLowerCase().includes('hy-mt2');
-}
+// 共通の型・応答解析は base に集約し、既定処理と各プロファイルの双方から参照する
+export { cleanChatResponse } from './prompt-profiles/base';
+export type { ChatMessages, TranslationAttempt, TranslationRequest } from './prompt-profiles/base';
 
 // 一般モデル向けのメッセージ
 // system へ翻訳規則を、user へ原文をそのまま渡す (指示は翻訳対象ではない)
@@ -49,60 +40,11 @@ function buildDefaultMessages(text: string, srcLang: string, dstLang: string, ap
     return { system, user: text };
 }
 
-// Hy-MT2 向けの共通指示 (固有名詞を保持し、訳文のみを出力させる)
-const HY_MT2_ONLY_TRANSLATION =
-    'Keep proper nouns - personal names, company names, product/brand names, and app/service names - unchanged. Output ONLY the translated text itself - no greeting, no explanation, no commentary, no quotes.';
-// チャットテンプレートの制御トークン漏れ検出
-const HY_MT2_CONTROL = /<｜|<\|hy|hy[-_ ]?(Assistant|User|begin|end)/i;
-
-// Hy-MT2 は翻訳方向としてターゲット言語のみを与える (ソース言語やネイティブ名で挙動が乱れるため)
-function buildHyMt2TagMessages(text: string, dstLang: string): ChatMessages {
-    const dstLangName = getLanguageName(dstLang);
-    return {
-        user: `Translate the following text into ${dstLangName}. ${HY_MT2_ONLY_TRANSLATION} Do not translate or output these instructions; translate only the wrapped text.
-
-<hytext>${text}</hytext>`,
-    };
-}
-
-function buildHyMt2BlockMessages(text: string, dstLang: string): ChatMessages {
-    const dstLangName = getLanguageName(dstLang);
-    return {
-        user: `[HyText]
-${text}
-
-[Task]
-Translate the [HyText] into ${dstLangName}. ${HY_MT2_ONLY_TRANSLATION}`,
-    };
-}
-
-function validateHyMt2(raw: string, variant: 'tag' | 'block'): { ok: boolean; text: string } {
-    const trimmed = cleanChatResponse(raw);
-    if (trimmed === '') return { ok: false, text: '' };
-    if (HY_MT2_CONTROL.test(trimmed)) return { ok: false, text: '' };
-    const markerLeak = variant === 'tag' ? /<\/?hytext>/i.test(trimmed) : /\[HyText\]|\[Task\]/.test(trimmed);
-    if (markerLeak) return { ok: false, text: '' };
-    return { ok: true, text: trimmed };
-}
-
-// モデルに応じた翻訳試行の組み立て
-// Hy-MT2 はタグ形式 → ラベルブロック形式の 2 バリアントを順に試す
-export function buildTranslationAttempts(
-    text: string,
-    srcLang: string,
-    dstLang: string,
-    appSummary: string | undefined,
-    model: string
-): TranslationAttempt[] {
-    if (isHyMt2Model(model)) {
-        return [
-            { messages: buildHyMt2TagMessages(text, dstLang), validate: raw => validateHyMt2(raw, 'tag') },
-            { messages: buildHyMt2BlockMessages(text, dstLang), validate: raw => validateHyMt2(raw, 'block') },
-        ];
-    }
+// 一般モデル向けの既定試行 (1 回。system/user 形式で原文をそのまま翻訳させる)
+function buildDefaultAttempts(request: TranslationRequest): TranslationAttempt[] {
     return [
         {
-            messages: buildDefaultMessages(text, srcLang, dstLang, appSummary),
+            messages: buildDefaultMessages(request.text, request.srcLang, request.dstLang, request.appSummary),
             validate: raw => {
                 const t = cleanChatResponse(raw);
                 return { ok: t !== '', text: t };
@@ -111,10 +53,11 @@ export function buildTranslationAttempts(
     ];
 }
 
-// ANSIエスケープシーケンスを除去する (CLI出力の装飾対策)
-function stripAnsi(text: string): string {
-    // eslint-disable-next-line no-control-regex -- CLI出力からANSI制御コードを取り除くために制御文字の照合が必要
-    return text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+// モデルに応じた翻訳試行の組み立て
+// 固有プロファイル (prompt-profiles) が一致すればそれを、無ければ既定処理を用いる
+export function buildTranslationAttempts(request: TranslationRequest, model: string): TranslationAttempt[] {
+    const profile = modelPromptProfiles.find(p => p.matches(model));
+    return profile ? profile.build(request) : buildDefaultAttempts(request);
 }
 
 // system と user を 1 本のプロンプト文字列へ結合する (ロールを持たない Agent CLI 用)
@@ -129,7 +72,7 @@ export async function runTranslationAttempts(
     model: string,
     dispatch: (messages: ChatMessages) => Promise<string>
 ): Promise<string> {
-    const attempts = buildTranslationAttempts(request.text, request.srcLang, request.dstLang, request.appSummary, model);
+    const attempts = buildTranslationAttempts(request, model);
     for (const attempt of attempts) {
         const raw = await dispatch(attempt.messages);
         const result = attempt.validate(raw);
@@ -138,13 +81,4 @@ export async function runTranslationAttempts(
         }
     }
     throw new Error('No usable translation was produced');
-}
-
-// チャット API の応答から訳文を取り出す
-// 推論モデルの <think> ブロックと、全体を囲むコードフェンスを除去して前後の空白を整える
-export function cleanChatResponse(response: string): string {
-    let text = stripAnsi(response).replace(/<think>[\s\S]*?<\/think>/gi, '');
-    const fenced = text.trim().match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
-    if (fenced) text = fenced[1];
-    return text.trim();
 }
