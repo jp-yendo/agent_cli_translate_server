@@ -10,7 +10,7 @@ portable:
   buildUniversalInstaller: false
 publish:
   provider: github
-  owner: kakehashi-inc
+  owner: jp-yendo
   repo: agent_cli_translate_server
   releaseType: draft
 releaseInfo:
