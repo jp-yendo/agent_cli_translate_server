@@ -1,6 +1,6 @@
 {
   "name": "agent-cli-translate_server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI translation server for XUnity.AutoTranslator CustomTranslate powered by agent CLIs",
   "main": "dist/main/index.js",
   "engines": {
@@ -58,12 +58,15 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.2.0",
     "@mui/material": "^9.2.0",
     "electron-updater": "^6.8.9",
     "i18next": "^26.3.6",
+    "ollama": "^0.6.3",
+    "openai": "^6.46.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-i18next": "^17.0.9",

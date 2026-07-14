@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Checkbox, Chip, FormControlLabel, Stack, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import { getEngineDisplayName } from '@shared/engine-catalog';
+import { isApiProviderId } from '@shared/api-provider-catalog';
 import type { LogLevel } from '@shared/types';
 import { useAppStore } from '../store';
 
@@ -26,9 +28,24 @@ function formatTime(timestamp: number): string {
 export default function LogPanel() {
     const { t } = useTranslation();
     const logs = useAppStore(state => state.logs);
+    const status = useAppStore(state => state.status);
     const autoScroll = useAppStore(state => state.autoScroll);
     const setAutoScroll = useAppStore(state => state.setAutoScroll);
     const containerRef = React.useRef<HTMLDivElement | null>(null);
+
+    // API プロバイダーはプロセスを持たないため「稼働中(ワーカー数)」は表示せず、処理中/待ちのみを示す
+    const isApi = status.agentId ? isApiProviderId(status.agentId) : false;
+    const statusText =
+        status.running && status.agentId
+            ? t(isApi ? 'logs.statusRunningApi' : 'logs.statusRunning', {
+                  agent: getEngineDisplayName(status.agentId),
+                  host: status.host,
+                  port: status.port,
+                  active: status.activeWorkers,
+                  busy: status.busyWorkers,
+                  queue: status.queueLength,
+              })
+            : t('logs.statusStopped');
 
     React.useEffect(() => {
         if (autoScroll && containerRef.current) {
@@ -38,6 +55,19 @@ export default function LogPanel() {
 
     return (
         <Stack spacing={1} sx={{ p: 2, height: '100%', minHeight: 0 }}>
+            <Typography
+                variant='body2'
+                sx={{
+                    fontWeight: 500,
+                    wordBreak: 'break-all',
+                    color: status.running ? 'success.main' : 'text.secondary',
+                    pb: 1,
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                }}
+            >
+                {statusText}
+            </Typography>
             <FormControlLabel
                 control={
                     <Checkbox

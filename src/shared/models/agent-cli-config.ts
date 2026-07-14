@@ -8,8 +8,6 @@ export type AgentCliConfig = {
     maxUses: number;
     // Agent CLI へ明示的に渡すモデル名。不要な Agent では null
     modelName: string | null;
-    // 利用する翻訳ヒントのID (未使用時は null)
-    hintId: string | null;
 };
 
 // Agent CLI ごとの同時起動数のデフォルト値
@@ -28,6 +26,5 @@ export function createDefaultAgentCliConfig(id: AgentCliId): AgentCliConfig {
         maxConcurrency: DEFAULT_MAX_CONCURRENCY[id],
         maxUses: DEFAULT_MAX_USES,
         modelName: null,
-        hintId: null,
     };
 }

@@ -1,15 +1,19 @@
 import type {
     AgentCliAvailability,
+    ApiConnectionTestResult,
     AppInfo,
     AppLanguage,
     AppSettings,
     AppTheme,
+    EngineId,
     LogEntry,
     ServerStatus,
     UpdateState,
 } from './types';
 import type { AgentCliId } from './agent-catalog';
+import type { ApiProviderId } from './api-provider-catalog';
 import type { AgentCliConfig } from './models/agent-cli-config';
+import type { ApiProviderConfig } from './models/api-provider-config';
 import type { CommonSettings } from './models/common-settings';
 import type { TranslationHint } from './models/translation-hint';
 
@@ -24,6 +28,7 @@ export type IpcApi = {
         getAll(): Promise<AppSettings>;
         saveCommon(common: CommonSettings): Promise<AppSettings>;
         saveAgent(agentId: AgentCliId, config: AgentCliConfig): Promise<AppSettings>;
+        saveApiProvider(providerId: ApiProviderId, config: ApiProviderConfig): Promise<AppSettings>;
     };
     // 翻訳ヒント管理
     hints: {
@@ -33,9 +38,14 @@ export type IpcApi = {
     };
     // Agent CLI 検出
     detectAgents(): Promise<AgentCliAvailability[]>;
+    // API プロバイダーの接続テスト・モデル一覧取得
+    apiProbe: {
+        testConnection(providerId: ApiProviderId, config: ApiProviderConfig): Promise<ApiConnectionTestResult>;
+        listModels(providerId: ApiProviderId, config: ApiProviderConfig): Promise<string[]>;
+    };
     // 翻訳サーバー制御
     server: {
-        start(agentId: AgentCliId): Promise<ServerStatus>;
+        start(engineId: EngineId): Promise<ServerStatus>;
         stop(): Promise<ServerStatus>;
         getStatus(): Promise<ServerStatus>;
         onStatusChanged(listener: (status: ServerStatus) => void): () => void;

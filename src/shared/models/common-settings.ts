@@ -1,4 +1,4 @@
-// Agent CLI 共通のサーバー設定 (common テーブル相当)
+// 共通のサーバー設定 (common テーブル相当)
 export type CommonSettings = {
     // 待ち受けアドレス
     host: string;
@@ -10,6 +10,8 @@ export type CommonSettings = {
     fallbackTo: string;
     // エージェントプロセスの最大稼働時間 (秒)
     agentRetentionSec: number;
+    // 全エンジン共通で利用する翻訳ヒントのID (未使用時は null)
+    hintId: string | null;
 };
 
 export const DEFAULT_COMMON_SETTINGS: CommonSettings = {
@@ -18,4 +20,5 @@ export const DEFAULT_COMMON_SETTINGS: CommonSettings = {
     fallbackFrom: 'en',
     fallbackTo: 'ja',
     agentRetentionSec: 300,
+    hintId: null,
 };

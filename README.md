@@ -6,14 +6,15 @@
 
 Agent CLI Translate Server is a GUI application that provides an AI translation server for the CustomTranslate endpoint of [XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator).
 
-Instead of calling AI provider APIs with API keys directly, it launches locally installed agent CLIs (coding-agent command line tools) as processes to perform translations. If you are already logged in to an agent CLI, no additional API key setup is required.
+It supports two kinds of translation engine. One launches locally installed agent CLIs (coding-agent command line tools) as processes; if you are already logged in to an agent CLI, no additional API key setup is required. The other connects directly to Ollama / OpenAI-compatible / Anthropic-compatible APIs via their official libraries, with a configurable Base URL, API key, and model per provider.
 
 The communication protocol follows the CustomTranslate endpoint specification of XUnity.AutoTranslator (respond to `GET /translate?from=...&to=...&text=...` with the translated text as plain text), so it can be used directly as a CustomTranslate service for XUnity.AutoTranslator.
 
 ### Features
 
 - HTTP API compliant with the CustomTranslate specification (`/translate`, `/health`)
-- Automatic detection of supported agent CLIs and server start with the selected agent (only one can listen at a time)
+- Two kinds of translation engine: agent CLIs and API connections (Ollama / OpenAI-compatible / Anthropic-compatible). Only one can listen at a time
+- Automatic detection of supported agent CLIs and server start with the selected agent
 - Agent pool: starts and verifies at least one reusable agent process before listening, translates in parallel up to the configured concurrency, and queues excess requests. Processes are replaced after the configured lifetime or usage limit
 - Translation hint management: register a summary of the target app to get translations that fit the content
 - Activity log view (latest 200 entries with auto-scroll)
@@ -32,6 +33,16 @@ The communication protocol follows the CustomTranslate endpoint specification of
 Install each agent CLI beforehand and complete its login (authentication) procedure.
 OpenCode (Ollama) requires both Ollama and OpenCode. Set the Ollama model name in its agent settings before starting it.
 
+### Supported API providers
+
+| Provider | Library | Default Base URL |
+| --- | --- | --- |
+| Ollama | `ollama` | `http://127.0.0.1:11434` |
+| OpenAI Compatible API | `openai` | `https://api.openai.com/v1` |
+| Anthropic Compatible API | `@anthropic-ai/sdk` | `https://api.anthropic.com` |
+
+Each provider uses its official library. Configure the Base URL, API key, and model in the "API connection" section of the "Server" tab. Leaving the Base URL empty uses the default. A model name is required. The API key may be left empty for local servers that need no authentication. Use "Test connection" to verify the endpoint, and "Select model" to choose from the available models in a dialog.
+
 ### XUnity.AutoTranslator configuration
 
 Add the following to `AutoTranslatorConfig.ini`:
@@ -41,7 +52,7 @@ Add the following to `AutoTranslatorConfig.ini`:
 Endpoint=CustomTranslate
 
 [Custom]
-Url=http://127.0.0.1:4660/translate
+Url=http://localhost:4660/translate
 ```
 
 If you change the listen address or port, update `Url` accordingly.
@@ -51,7 +62,7 @@ If you change the listen address or port, update `Url` accordingly.
 Translation request (CustomTranslate specification):
 
 ```http
-GET http://127.0.0.1:4660/translate?from=en&to=ja&text=Hello
+GET http://localhost:4660/translate?from=en&to=ja&text=Hello
 ```
 
 Response (200, text/plain):
@@ -63,7 +74,7 @@ Response (200, text/plain):
 Health check:
 
 ```http
-GET http://127.0.0.1:4660/health
+GET http://localhost:4660/health
 ```
 
 Response (200, text/plain):
@@ -75,15 +86,15 @@ ok
 Quick check with curl:
 
 ```bash
-curl "http://127.0.0.1:4660/translate?from=en&to=ja&text=Hello"
+curl "http://localhost:4660/translate?from=en&to=ja&text=Hello"
 ```
 
 ### Usage
 
 1. Start the app and review/save the settings in the "Common Settings" tab: listen address (default 127.0.0.1), port (default 4660), fallback languages, and agent process lifetime (default 300 seconds).
 2. Optionally register a summary of the target app in the "Translation Hints" tab.
-3. In the "Server" tab, expand the accordion of the agent CLI you want to use, configure the concurrency, maximum process uses, and translation hint, and save.
-4. Press the "Start" button on the agent's header row to start the translation server (other agents cannot be started while one is running).
+3. Optionally pick a translation hint from the selector at the top of the "Server" tab; it is shared by all engines and saved immediately. Then expand the accordion of the engine you want to use and save its settings. For an agent CLI, configure the concurrency and maximum process uses; for an API connection, configure the Base URL, API key, and model.
+4. Press the "Start" button on the engine's header row to start the translation server (no other engine can be started while one is running).
 5. Check translation requests/results in the "Logs" tab.
 
 ### Settings file
@@ -182,7 +193,7 @@ src/
 └── public/                # icons etc.
 ```
 
-See [Documents/システム仕様.md](Documents/システム仕様.md) and [Documents/テーブル定義.md](Documents/テーブル定義.md) for details (Japanese).
+See [Documents/システム仕様.md](Documents/システム仕様.md), [Documents/テーブル定義.md](Documents/テーブル定義.md), and [Documents/プロンプト仕様.md](Documents/プロンプト仕様.md) for details (Japanese).
 
 ### Technologies
 
@@ -192,6 +203,7 @@ See [Documents/システム仕様.md](Documents/システム仕様.md) and [Docu
 - **Zustand**
 - **i18next**
 - **Vite**
+- **Official API SDKs**: `openai`, `@anthropic-ai/sdk`, `ollama`
 
 ### Creating the Windows icon
 

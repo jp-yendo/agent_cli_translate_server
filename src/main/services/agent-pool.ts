@@ -1,6 +1,5 @@
-import type { AgentCliId } from '../../shared/agent-catalog';
 import type { LogLevel } from '../../shared/types';
-import { createTranslationWorker, type TranslationWorker } from './agent-worker';
+import type { TranslationRequest, TranslationWorker } from './agent-worker';
 
 // エージェントプール
 //
@@ -17,11 +16,9 @@ export type PoolStats = {
 };
 
 export type PoolOptions = {
-    agentId: AgentCliId;
-    resolvedPath: string;
+    // ワーカー (エージェント CLI プロセス / API 接続) の生成ファクトリ
+    createWorker: (index: number) => TranslationWorker;
     maxConcurrency: number;
-    maxUses: number;
-    modelName: string | null;
     maxLifetimeMs: number;
     log: (level: LogLevel, key: string, params?: Record<string, string | number>) => void;
     onStatsChanged: (stats: PoolStats) => void;
@@ -87,10 +84,10 @@ export class AgentPool {
         this.opts.onStatsChanged(this.getStats());
     }
 
-    async run(prompt: string): Promise<string> {
+    async run(request: TranslationRequest): Promise<string> {
         const worker = await this.acquire();
         try {
-            const response = await worker.run(prompt);
+            const response = await worker.run(request);
             return response;
         } finally {
             this.release(worker);
@@ -138,13 +135,7 @@ export class AgentPool {
     }
 
     private createWorker(): TranslationWorker {
-        const worker = createTranslationWorker(
-            this.opts.agentId,
-            this.opts.resolvedPath,
-            this.nextIndex,
-            this.opts.maxUses,
-            this.opts.modelName
-        );
+        const worker = this.opts.createWorker(this.nextIndex);
         this.nextIndex += 1;
         this.workers.add(worker);
         this.opts.log('info', 'workerSpawned', { index: worker.index });

@@ -1,10 +1,21 @@
 import { create } from 'zustand';
 import { LOG_MAX_ENTRIES } from '@shared/app-constants';
 import type { AgentCliId } from '@shared/agent-catalog';
+import type { ApiProviderId } from '@shared/api-provider-catalog';
 import type { AgentCliConfig } from '@shared/models/agent-cli-config';
+import type { ApiProviderConfig } from '@shared/models/api-provider-config';
 import type { CommonSettings } from '@shared/models/common-settings';
 import type { TranslationHint } from '@shared/models/translation-hint';
-import type { AgentCliAvailability, AppInfo, AppLanguage, AppSettings, LogEntry, ServerStatus } from '@shared/types';
+import type {
+    AgentCliAvailability,
+    ApiConnectionTestResult,
+    AppInfo,
+    AppLanguage,
+    AppSettings,
+    EngineId,
+    LogEntry,
+    ServerStatus,
+} from '@shared/types';
 import i18n from './i18n/config';
 
 // アプリ全体の状態管理
@@ -37,13 +48,16 @@ type AppState = {
     applyAppInfo(info: AppInfo): void;
     setThemeMode(mode: 'light' | 'dark'): Promise<void>;
     setLanguage(language: AppLanguage): Promise<void>;
-    refreshAgents(): Promise<void>;
     saveCommonSettings(common: CommonSettings): Promise<void>;
+    saveTranslationHint(hintId: string | null): Promise<void>;
     saveAgentConfig(agentId: AgentCliId, config: AgentCliConfig): Promise<void>;
+    saveApiProviderConfig(providerId: ApiProviderId, config: ApiProviderConfig): Promise<void>;
+    testApiConnection(providerId: ApiProviderId, config: ApiProviderConfig): Promise<ApiConnectionTestResult>;
+    listApiModels(providerId: ApiProviderId, config: ApiProviderConfig): Promise<string[]>;
     createHint(input: { name: string; summary: string }): Promise<void>;
     updateHint(hint: TranslationHint): Promise<void>;
     deleteHint(hintId: string): Promise<void>;
-    startServer(agentId: AgentCliId): Promise<void>;
+    startServer(engineId: EngineId): Promise<void>;
     stopServer(): Promise<void>;
     setAutoScroll(value: boolean): void;
     clearError(): void;
@@ -108,11 +122,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
     },
 
-    async refreshAgents() {
-        const agents = await api().detectAgents();
-        set({ agents });
-    },
-
     async saveCommonSettings(common) {
         try {
             const settings = await api().settings.saveCommon(common);
@@ -120,6 +129,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         } catch (error) {
             set({ lastError: toErrorMessage(error) });
             throw error;
+        }
+    },
+
+    async saveTranslationHint(hintId) {
+        const current = get().settings;
+        if (!current) return;
+        try {
+            const settings = await api().settings.saveCommon({ ...current.common, hintId });
+            set({ settings });
+        } catch (error) {
+            set({ lastError: toErrorMessage(error) });
         }
     },
 
@@ -131,6 +151,24 @@ export const useAppStore = create<AppState>((set, get) => ({
             set({ lastError: toErrorMessage(error) });
             throw error;
         }
+    },
+
+    async saveApiProviderConfig(providerId, config) {
+        try {
+            const settings = await api().settings.saveApiProvider(providerId, config);
+            set({ settings });
+        } catch (error) {
+            set({ lastError: toErrorMessage(error) });
+            throw error;
+        }
+    },
+
+    async testApiConnection(providerId, config) {
+        return api().apiProbe.testConnection(providerId, config);
+    },
+
+    async listApiModels(providerId, config) {
+        return api().apiProbe.listModels(providerId, config);
     },
 
     async createHint(input) {
@@ -163,9 +201,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
     },
 
-    async startServer(agentId) {
+    async startServer(engineId) {
         try {
-            const status = await api().server.start(agentId);
+            const status = await api().server.start(engineId);
             set({ status });
         } catch (error) {
             set({ lastError: toErrorMessage(error) });

@@ -3,7 +3,9 @@ import path from 'path';
 import crypto from 'crypto';
 import { getAppRootDir, SETTINGS_FILE_NAME } from '../../shared/constants';
 import { AGENT_CLI_IDS, type AgentCliId } from '../../shared/agent-catalog';
+import { API_PROVIDER_IDS, type ApiProviderId } from '../../shared/api-provider-catalog';
 import { createDefaultAgentCliConfig, type AgentCliConfig } from '../../shared/models/agent-cli-config';
+import { createDefaultApiProviderConfig, type ApiProviderConfig } from '../../shared/models/api-provider-config';
 import { DEFAULT_COMMON_SETTINGS, type CommonSettings } from '../../shared/models/common-settings';
 import type { TranslationHint } from '../../shared/models/translation-hint';
 import { DEFAULT_UI_SETTINGS, type UiSettings } from '../../shared/models/ui-settings';
@@ -22,9 +24,14 @@ function createDefaultSettings(): AppSettings {
     for (const id of AGENT_CLI_IDS) {
         agents[id] = createDefaultAgentCliConfig(id);
     }
+    const apiProviders = {} as Record<ApiProviderId, ApiProviderConfig>;
+    for (const id of API_PROVIDER_IDS) {
+        apiProviders[id] = createDefaultApiProviderConfig();
+    }
     return {
         common: { ...DEFAULT_COMMON_SETTINGS },
         agents,
+        apiProviders,
         hints: [],
         ui: { ...DEFAULT_UI_SETTINGS },
     };
@@ -54,6 +61,7 @@ function normalizeSettings(raw: unknown): AppSettings {
             settings.common.fallbackTo = common.fallbackTo.trim();
         }
         settings.common.agentRetentionSec = toPositiveInt(common.agentRetentionSec, settings.common.agentRetentionSec);
+        if (typeof common.hintId === 'string' && common.hintId) settings.common.hintId = common.hintId;
     }
 
     const agents = obj.agents as Record<string, Partial<AgentCliConfig>> | undefined;
@@ -69,7 +77,22 @@ function normalizeSettings(raw: unknown): AppSettings {
                 if (typeof agent.modelName === 'string' && agent.modelName.trim()) {
                     settings.agents[id].modelName = agent.modelName.trim();
                 }
-                if (typeof agent.hintId === 'string' && agent.hintId) settings.agents[id].hintId = agent.hintId;
+            }
+        }
+    }
+
+    const apiProviders = obj.apiProviders as Record<string, Partial<ApiProviderConfig>> | undefined;
+    if (apiProviders && typeof apiProviders === 'object') {
+        for (const id of API_PROVIDER_IDS) {
+            const provider = apiProviders[id];
+            if (provider && typeof provider === 'object') {
+                if (typeof provider.baseUrl === 'string') settings.apiProviders[id].baseUrl = provider.baseUrl.trim();
+                if (typeof provider.apiKey === 'string') settings.apiProviders[id].apiKey = provider.apiKey;
+                if (typeof provider.model === 'string') settings.apiProviders[id].model = provider.model.trim();
+                settings.apiProviders[id].maxConcurrency = toPositiveInt(
+                    provider.maxConcurrency,
+                    settings.apiProviders[id].maxConcurrency
+                );
             }
         }
     }
@@ -100,10 +123,8 @@ function normalizeSettings(raw: unknown): AppSettings {
 
     // 存在しないヒントIDへの参照を除去
     const hintIds = new Set(settings.hints.map(h => h.id));
-    for (const id of AGENT_CLI_IDS) {
-        if (settings.agents[id].hintId && !hintIds.has(settings.agents[id].hintId as string)) {
-            settings.agents[id].hintId = null;
-        }
+    if (settings.common.hintId && !hintIds.has(settings.common.hintId)) {
+        settings.common.hintId = null;
     }
 
     return settings;
@@ -136,7 +157,9 @@ function persist(settings: AppSettings): void {
 
 export function saveCommonSettings(common: CommonSettings): AppSettings {
     const settings = loadSettings();
-    const next: AppSettings = { ...settings, common: normalizeSettings({ common }).common };
+    // hintId の有効性検証は既存ヒントに対して行うため、hints も渡して正規化する
+    const normalizedCommon = normalizeSettings({ common, hints: settings.hints }).common;
+    const next: AppSettings = { ...settings, common: normalizedCommon };
     persist(next);
     return next;
 }
@@ -150,14 +173,29 @@ export function saveAgentConfig(agentId: AgentCliId, config: AgentCliConfig): Ap
         maxConcurrency: toPositiveInt(config.maxConcurrency, settings.agents[agentId].maxConcurrency),
         maxUses: toPositiveInt(config.maxUses, settings.agents[agentId].maxUses),
         modelName: typeof config.modelName === 'string' && config.modelName.trim() ? config.modelName.trim() : null,
-        hintId: typeof config.hintId === 'string' && config.hintId ? config.hintId : null,
     };
-    if (normalized.hintId && !settings.hints.some(h => h.id === normalized.hintId)) {
-        normalized.hintId = null;
-    }
     const next: AppSettings = {
         ...settings,
         agents: { ...settings.agents, [agentId]: normalized },
+    };
+    persist(next);
+    return next;
+}
+
+export function saveApiProviderConfig(providerId: ApiProviderId, config: ApiProviderConfig): AppSettings {
+    const settings = loadSettings();
+    if (!API_PROVIDER_IDS.includes(providerId)) {
+        throw new Error(`Unknown API provider id: ${providerId}`);
+    }
+    const normalized: ApiProviderConfig = {
+        baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl.trim() : '',
+        apiKey: typeof config.apiKey === 'string' ? config.apiKey : '',
+        model: typeof config.model === 'string' ? config.model.trim() : '',
+        maxConcurrency: toPositiveInt(config.maxConcurrency, settings.apiProviders[providerId].maxConcurrency),
+    };
+    const next: AppSettings = {
+        ...settings,
+        apiProviders: { ...settings.apiProviders, [providerId]: normalized },
     };
     persist(next);
     return next;
@@ -205,14 +243,10 @@ export function updateHint(hint: TranslationHint): AppSettings {
 export function deleteHint(hintId: string): AppSettings {
     const settings = loadSettings();
     const hints = settings.hints.filter(h => h.id !== hintId);
-    // 削除したヒントを参照している Agent CLI 設定を解除
-    const agents = { ...settings.agents };
-    for (const id of AGENT_CLI_IDS) {
-        if (agents[id].hintId === hintId) {
-            agents[id] = { ...agents[id], hintId: null };
-        }
-    }
-    const next: AppSettings = { ...settings, hints, agents };
+    // 削除したヒントを参照している共通設定を解除
+    const common =
+        settings.common.hintId === hintId ? { ...settings.common, hintId: null } : settings.common;
+    const next: AppSettings = { ...settings, hints, common };
     persist(next);
     return next;
 }

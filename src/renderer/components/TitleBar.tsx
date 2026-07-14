@@ -1,7 +1,9 @@
 import React from 'react';
 import { Box, Button, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import { getEngineDisplayName } from '@shared/engine-catalog';
 import type { AppInfo } from '@shared/types';
+import { useAppStore } from '../store';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import CloseIcon from '@mui/icons-material/Close';
@@ -30,8 +32,14 @@ type Props = {
 
 export default function TitleBar({ info, view, onViewChange }: Props) {
     const { t } = useTranslation();
+    const status = useAppStore(state => state.status);
     const isMac = info?.os === 'darwin';
     const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
+
+    const statusText =
+        status.running && status.agentId
+            ? t('titleBar.statusRunning', { agent: getEngineDisplayName(status.agentId) })
+            : t('titleBar.statusStopped');
 
     const controlButtonSx = {
         borderRadius: 0,
@@ -64,6 +72,17 @@ export default function TitleBar({ info, view, onViewChange }: Props) {
                         v{info.version}
                     </Typography>
                 )}
+                <Typography
+                    variant='caption'
+                    sx={{
+                        color: status.running ? 'success.main' : 'text.secondary',
+                        fontSize: '0.75rem',
+                        fontWeight: status.running ? 600 : 400,
+                    }}
+                    noWrap
+                >
+                    {statusText}
+                </Typography>
             </Box>
 
             <Box sx={{ flexGrow: 1 }} />

@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcApi } from '../shared/ipc';
-import type { LogEntry, ServerStatus, UpdateState } from '../shared/types';
+import type { EngineId, LogEntry, ServerStatus, UpdateState } from '../shared/types';
 import type { AgentCliId } from '../shared/agent-catalog';
+import type { ApiProviderId } from '../shared/api-provider-catalog';
 import type { AgentCliConfig } from '../shared/models/agent-cli-config';
+import type { ApiProviderConfig } from '../shared/models/api-provider-config';
 import type { CommonSettings } from '../shared/models/common-settings';
 import type { TranslationHint } from '../shared/models/translation-hint';
 
@@ -24,6 +26,9 @@ const IPC_CHANNELS = {
     SETTINGS_GET_ALL: 'settings:getAll',
     SETTINGS_SAVE_COMMON: 'settings:saveCommon',
     SETTINGS_SAVE_AGENT: 'settings:saveAgent',
+    SETTINGS_SAVE_API_PROVIDER: 'settings:saveApiProvider',
+    API_TEST_CONNECTION: 'api:testConnection',
+    API_LIST_MODELS: 'api:listModels',
     HINTS_CREATE: 'hints:create',
     HINTS_UPDATE: 'hints:update',
     HINTS_DELETE: 'hints:delete',
@@ -68,6 +73,9 @@ const api: IpcApi = {
         async saveAgent(agentId: AgentCliId, config: AgentCliConfig) {
             return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_AGENT, agentId, config);
         },
+        async saveApiProvider(providerId: ApiProviderId, config: ApiProviderConfig) {
+            return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_API_PROVIDER, providerId, config);
+        },
     },
     hints: {
         async create(input: { name: string; summary: string }) {
@@ -83,9 +91,17 @@ const api: IpcApi = {
     async detectAgents() {
         return ipcRenderer.invoke(IPC_CHANNELS.AGENTS_DETECT);
     },
+    apiProbe: {
+        async testConnection(providerId: ApiProviderId, config: ApiProviderConfig) {
+            return ipcRenderer.invoke(IPC_CHANNELS.API_TEST_CONNECTION, providerId, config);
+        },
+        async listModels(providerId: ApiProviderId, config: ApiProviderConfig) {
+            return ipcRenderer.invoke(IPC_CHANNELS.API_LIST_MODELS, providerId, config);
+        },
+    },
     server: {
-        async start(agentId: AgentCliId) {
-            return ipcRenderer.invoke(IPC_CHANNELS.SERVER_START, agentId);
+        async start(engineId: EngineId) {
+            return ipcRenderer.invoke(IPC_CHANNELS.SERVER_START, engineId);
         },
         async stop() {
             return ipcRenderer.invoke(IPC_CHANNELS.SERVER_STOP);

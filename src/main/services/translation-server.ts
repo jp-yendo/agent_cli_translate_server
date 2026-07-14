@@ -2,7 +2,6 @@ import http from 'http';
 import { isSupportedLanguage } from '../../shared/languages';
 import { DEFAULT_COMMON_SETTINGS } from '../../shared/models/common-settings';
 import type { LogLevel } from '../../shared/types';
-import { buildFullPrompt, extractTranslation } from './prompt-builder';
 import { isDynamicValue, shouldSkipTranslation } from './text-filter';
 import type { AgentPool } from './agent-pool';
 
@@ -157,9 +156,12 @@ export class TranslationServer {
 
         const startedAt = Date.now();
         try {
-            const prompt = buildFullPrompt(text, srcLang, dstLang, this.opts.hintSummary);
-            const rawResponse = await this.opts.pool.run(prompt);
-            const translation = extractTranslation(rawResponse);
+            const translation = await this.opts.pool.run({
+                text,
+                srcLang,
+                dstLang,
+                appSummary: this.opts.hintSummary,
+            });
             const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(2);
 
             this.opts.log('success', 'translationDone', {

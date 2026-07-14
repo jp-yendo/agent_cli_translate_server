@@ -17,10 +17,15 @@ export type AppInfo = {
 };
 
 import type { AgentCliId } from './agent-catalog';
+import type { ApiProviderId } from './api-provider-catalog';
 import type { AgentCliConfig } from './models/agent-cli-config';
+import type { ApiProviderConfig } from './models/api-provider-config';
 import type { CommonSettings } from './models/common-settings';
 import type { TranslationHint } from './models/translation-hint';
 import type { UiSettings } from './models/ui-settings';
+
+// 翻訳エンジン (Agent CLI または API プロバイダー) の識別子
+export type EngineId = AgentCliId | ApiProviderId;
 
 // Agent CLI の検出結果
 export type AgentCliAvailability = {
@@ -38,15 +43,23 @@ export type AgentCliAvailability = {
 export type AppSettings = {
     common: CommonSettings;
     agents: Record<AgentCliId, AgentCliConfig>;
+    apiProviders: Record<ApiProviderId, ApiProviderConfig>;
     hints: TranslationHint[];
     ui: UiSettings;
+};
+
+// API プロバイダーの接続テスト結果
+export type ApiConnectionTestResult = {
+    ok: boolean;
+    // 失敗時: エラーメッセージ
+    error?: string;
 };
 
 // 翻訳サーバーの稼働状態
 export type ServerStatus = {
     running: boolean;
-    // 稼働中の Agent CLI
-    agentId?: AgentCliId;
+    // 稼働中の翻訳エンジン (Agent CLI または API プロバイダー)
+    agentId?: EngineId;
     host?: string;
     port?: number;
     // 起動済みエージェント数

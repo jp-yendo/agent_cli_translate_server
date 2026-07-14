@@ -3,8 +3,15 @@ import fs from 'fs';
 import { AGENT_EXECUTION_TIMEOUT_MS, getAppRootDir } from '../../shared/constants';
 import type { AgentCliId } from '../../shared/agent-catalog';
 import { buildCliLaunchPlan } from '../utils/cli-spawn';
+import { flattenChatMessages, runTranslationAttempts, type TranslationRequest } from './prompt-builder';
+
+export type { TranslationRequest } from './prompt-builder';
 
 // 翻訳を実行するエージェントワーカー
+//
+// プロンプト生成と結果解析は prompt-builder に共通化し、各ワーカーは経路固有の
+// パイプライン (プロセス入出力) のみを dispatch として実装する。Agent CLI は
+// system/user のロールを持たないため、flattenChatMessages で 1 本に結合して渡す。
 //
 // 起動オーバーヘッドを最小化するため、全ワーカーがプロセスを保持する:
 // - claude-code: stream-json モードの常駐プロセスを維持し、複数の翻訳依頼で再利用する
@@ -17,8 +24,8 @@ export interface TranslationWorker {
     readonly index: number;
     readonly alive: boolean;
     readonly processStartedAt: number;
-    // プロンプトを実行し、CLI の生の応答テキストを返す
-    run(prompt: string): Promise<string>;
+    // 翻訳を実行し、抽出済みの訳文を返す
+    run(request: TranslationRequest): Promise<string>;
     isReusable(): boolean;
     // プロセスを事前起動して待機状態にする
     warmUp(): Promise<void>;
@@ -133,7 +140,8 @@ class PersistentCodexWorker implements TranslationWorker {
     constructor(
         readonly index: number,
         private readonly resolvedPath: string,
-        private readonly maxUses: number
+        private readonly maxUses: number,
+        private readonly model: string
     ) {}
 
     get alive(): boolean {
@@ -328,7 +336,11 @@ class PersistentCodexWorker implements TranslationWorker {
         await this.warmUp();
     }
 
-    async run(prompt: string): Promise<string> {
+    run(request: TranslationRequest): Promise<string> {
+        return runTranslationAttempts(request, this.model, messages => this.dispatch(flattenChatMessages(messages)));
+    }
+
+    private async dispatch(prompt: string): Promise<string> {
         if (this.disposed) throw new Error('Worker is already disposed');
         if (this.promptInFlight) throw new Error('Worker is busy');
 
@@ -396,7 +408,8 @@ class PersistentClaudeWorker implements TranslationWorker {
     constructor(
         readonly index: number,
         private readonly resolvedPath: string,
-        private readonly maxUses: number
+        private readonly maxUses: number,
+        private readonly model: string
     ) {}
 
     get alive(): boolean {
@@ -517,7 +530,11 @@ class PersistentClaudeWorker implements TranslationWorker {
         await this.warmUp();
     }
 
-    async run(prompt: string): Promise<string> {
+    run(request: TranslationRequest): Promise<string> {
+        return runTranslationAttempts(request, this.model, messages => this.dispatch(flattenChatMessages(messages)));
+    }
+
+    private async dispatch(prompt: string): Promise<string> {
         if (this.disposed) throw new Error('Worker is already disposed');
         if (this.pending) throw new Error('Worker is busy');
 
@@ -783,7 +800,13 @@ class AcpWorker implements TranslationWorker {
         await this.warmUp();
     }
 
-    async run(prompt: string): Promise<string> {
+    run(request: TranslationRequest): Promise<string> {
+        return runTranslationAttempts(request, this.modelName ?? '', messages =>
+            this.dispatch(flattenChatMessages(messages))
+        );
+    }
+
+    private async dispatch(prompt: string): Promise<string> {
         if (this.disposed) {
             throw new Error('Worker is already disposed');
         }
@@ -846,9 +869,9 @@ export function createTranslationWorker(
 ): TranslationWorker {
     switch (agentId) {
         case 'claude-code':
-            return new PersistentClaudeWorker(index, resolvedPath, maxUses);
+            return new PersistentClaudeWorker(index, resolvedPath, maxUses, modelName ?? '');
         case 'codex':
-            return new PersistentCodexWorker(index, resolvedPath, maxUses);
+            return new PersistentCodexWorker(index, resolvedPath, maxUses, modelName ?? '');
         case 'grok':
         case 'opencode':
         case 'opencode-ollama':
